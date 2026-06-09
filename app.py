@@ -76,36 +76,42 @@ def mostrar_pdf_estable(ruta_pdf):
         st.error(f"⚠️ El archivo físico '{os.path.basename(ruta_pdf)}' no se encuentra.")
 
 
-# --- CONTROL DE ACCESO (PASSWORD CONTENIDO EN FORMULARIO) ---
+# --- CONTROL DE ACCESO (SISTEMA DE SEGURIDAD SEGURO) ---
 
 PASSWORD_CORRECTO = "MetepecII_2026"
 
+# Inicializar estado de autenticación
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 
-# Si no está autenticado, mostramos el formulario de acceso
+# Callback para procesar el login de forma nativa sin usar st.rerun
+def verificar_password():
+    if st.session_state["password_input"] == PASSWORD_CORRECTO:
+        st.session_state["autenticado"] = True
+    else:
+        st.session_state["autenticado"] = False
+        st.sidebar.error("❌ Contraseña incorrecta.")
+
+# Si no está autenticado, bloquea la pantalla completa
 if not st.session_state["autenticado"]:
     st.markdown("### 🔐 Acceso Restringido")
+    st.info("Por favor, introduce las credenciales asignadas por la administración del plantel para consultar los números de seguridad social.")
     
-    # Usamos un formulario nativo para procesar el clic y el 'Enter' limpiamente sin romper el flujo
-    with st.form("login_form"):
-        password_ingresado = st.text_input("Introduce la contraseña para acceder a los expedientes:", type="password")
-        boton_ingresar = st.form_submit_button("Ingresar")
-        
-        if boton_ingresar:
-            if password_ingresado == PASSWORD_CORRECTO:
-                st.session_state["autenticado"] = True
-                st.success("🔑 Acceso concedido. Cargando sistema...")
-                st.experimental_rerun() if hasattr(st, "experimental_rerun") else st.rerun()
-            else:
-                st.error("❌ Contraseña incorrecta. Inténtalo de nuevo.")
+    # El parámetro on_change ejecuta la verificación de manera limpia en el backend de Streamlit
+    st.text_input(
+        "Introduce la contraseña del sistema:", 
+        type="password", 
+        key="password_input", 
+        on_change=verificar_password
+    )
             
 else:
     # --- INTERFAZ DEL SISTEMA (SOLO VISIBLE SI ESTÁ AUTENTICADO) ---
     
+    # Opción sencilla para cerrar sesión reiniciando el estado completo
     if st.sidebar.button("🚪 Cerrar Sesión"):
         st.session_state["autenticado"] = False
-        st.experimental_rerun() if hasattr(st, "experimental_rerun") else st.rerun()
+        st.write('<meta http-equiv="refresh" content="0">', unsafe_allow_html=True) # Alternativa limpia para refrescar
 
     st.sidebar.header("🔍 Filtros de Búsqueda")
     busqueda_texto = st.sidebar.text_input("Buscar por Nombre, Archivo, NSS o No. Control:")
