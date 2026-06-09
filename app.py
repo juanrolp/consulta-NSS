@@ -76,35 +76,36 @@ def mostrar_pdf_estable(ruta_pdf):
         st.error(f"⚠️ El archivo físico '{os.path.basename(ruta_pdf)}' no se encuentra.")
 
 
-# --- CONTROL DE ACCESO (PASSWORD) ---
+# --- CONTROL DE ACCESO (PASSWORD CONTENIDO EN FORMULARIO) ---
 
-# Definir la contraseña del sistema (puedes cambiarla aquí)
 PASSWORD_CORRECTO = "MetepecII_2026"
 
-# Inicializar la variable de estado si no existe
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 
-# Vista de inicio de sesión si no está autenticado
+# Si no está autenticado, mostramos el formulario de acceso
 if not st.session_state["autenticado"]:
     st.markdown("### 🔐 Acceso Restringido")
-    password_ingresado = st.text_input("Introduce la contraseña para acceder a los expedientes:", type="password")
     
-    if st.button("Ingresar"):
-        if password_ingresado == PASSWORD_CORRECTO:
-            st.session_state["autenticado"] = True
-            st.success("🔑 Acceso concedido.")
-            st.rerun()  # Recarga la página para mostrar el sistema
-        else:
-            st.error("❌ Contraseña incorrecta. Inténtalo de nuevo.")
+    # Usamos un formulario nativo para procesar el clic y el 'Enter' limpiamente sin romper el flujo
+    with st.form("login_form"):
+        password_ingresado = st.text_input("Introduce la contraseña para acceder a los expedientes:", type="password")
+        boton_ingresar = st.form_submit_button("Ingresar")
+        
+        if boton_ingresar:
+            if password_ingresado == PASSWORD_CORRECTO:
+                st.session_state["autenticado"] = True
+                st.success("🔑 Acceso concedido. Cargando sistema...")
+                st.experimental_rerun() if hasattr(st, "experimental_rerun") else st.rerun()
+            else:
+                st.error("❌ Contraseña incorrecta. Inténtalo de nuevo.")
             
 else:
     # --- INTERFAZ DEL SISTEMA (SOLO VISIBLE SI ESTÁ AUTENTICADO) ---
     
-    # Botón para cerrar sesión en la barra lateral
     if st.sidebar.button("🚪 Cerrar Sesión"):
         st.session_state["autenticado"] = False
-        st.rerun()
+        st.experimental_rerun() if hasattr(st, "experimental_rerun") else st.rerun()
 
     st.sidebar.header("🔍 Filtros de Búsqueda")
     busqueda_texto = st.sidebar.text_input("Buscar por Nombre, Archivo, NSS o No. Control:")
@@ -127,14 +128,12 @@ else:
         termino = f"%{busqueda_texto}%"
         parametros.extend([termino, termino, termino, termino])
 
-    # Ejecutar consulta
     conn = conectar_db()
     cursor = conn.cursor()
     cursor.execute(query, parametros)
     resultados = cursor.fetchall()
     conn.close()
 
-    # Diseño en dos columnas
     col_lista, col_visor = st.columns([1, 1])
 
     with col_lista:
@@ -156,7 +155,6 @@ else:
                     )
                     st.markdown("---")
             
-            # Selector único
             seleccion = st.radio(
                 "Seleccione el alumno para visualizar su NSS:",
                 options=list(opciones_docs.keys()),
