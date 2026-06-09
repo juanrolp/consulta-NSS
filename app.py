@@ -23,10 +23,8 @@ def inicializar_db_dinamica():
     conn = conectar_db()
     cursor = conn.cursor()
     
-    # Eliminamos la tabla anterior para asegurar que se cree con las nuevas columnas
     cursor.execute("DROP TABLE IF EXISTS documentos")
     
-    # Nueva estructura de tabla incluyendo Alumno, NSS y Control Escolar
     cursor.execute("""
         CREATE TABLE documentos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,8 +37,6 @@ def inicializar_db_dinamica():
         )
     """)
     
-    # Datos estructurados para tus dos archivos de prueba físicos
-    # Estructura: (num_control, alumno_nombre, nss, categoria, fecha, archivo_nombre)
     datos_alumnos = [
         ('23215060110001', 'Juan Pérez López', '12345678901', 'Seguridad Social', '2026-06-09', 'doc_001.pdf'),
         ('23215060110002', 'María Rodríguez García', '98765432102', 'Seguridad Social', '2026-06-09', 'doc_002.pdf')
@@ -54,7 +50,7 @@ def inicializar_db_dinamica():
     conn.commit()
     conn.close()
 
-# Inicializar y actualizar base de datos
+# Inicializar base de datos
 inicializar_db_dinamica()
 
 # --- FUNCIONES DE VISUALIZACIÓN ---
@@ -66,7 +62,6 @@ def mostrar_pdf_estable(ruta_pdf):
         with open(ruta_pdf, "rb") as f:
             pdf_bytes = f.read()
         
-        # Botón de descarga/apertura externa (Indispensable para archivos pesados)
         st.download_button(
             label=f"📥 Abrir / Descargar {nombre_archivo} en pestaña nueva",
             data=pdf_bytes,
@@ -74,84 +69,109 @@ def mostrar_pdf_estable(ruta_pdf):
             mime="application/pdf"
         )
         
-        # Iframe para renderizado en pantalla
         base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
         pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="750px" type="application/pdf"></iframe>'
         st.markdown(pdf_display, unsafe_allow_html=True)
     else:
         st.error(f"⚠️ El archivo físico '{os.path.basename(ruta_pdf)}' no se encuentra.")
 
-# --- INTERFAZ DE USUARIO ---
 
-st.sidebar.header("🔍 Filtros de Búsqueda")
-# Actualización del marcador de posición para guiar al usuario
-busqueda_texto = st.sidebar.text_input("Buscar por Nombre, Archivo, NSS o No. Control:")
+# --- CONTROL DE ACCESO (PASSWORD) ---
 
-# Consulta SQL Dinámica (CORREGIDA: Ahora busca en las 4 columnas usando OR)
-query = """
-    SELECT id, num_control, alumno_nombre, nss, categoria, fecha_registro, archivo_nombre 
-    FROM documentos 
-    WHERE 1=1
-"""
-parametros = []
+# Definir la contraseña del sistema (puedes cambiarla aquí)
+PASSWORD_CORRECTO = "MetepecII_2026"
 
-if busqueda_texto:
-    query += """ 
-        AND (alumno_nombre LIKE ? 
-        OR archivo_nombre LIKE ? 
-        OR nss LIKE ? 
-        OR num_control LIKE ?)
-    """
-    termino = f"%{busqueda_texto}%"
-    parametros.extend([termino, termino, termino, termino])
+# Inicializar la variable de estado si no existe
+if "autenticado" not in st.session_state:
+    st.session_state["autenticado"] = False
 
-# Ejecutar consulta
-conn = conectar_db()
-cursor = conn.cursor()
-cursor.execute(query, parametros)
-resultados = cursor.fetchall()
-conn.close()
-
-# Diseño en dos columnas
-col_lista, col_visor = st.columns([1, 1])
-
-with col_lista:
-    st.subheader("📋 Expedientes Encontrados")
-    if resultados:
-        opciones_docs = {}
-        
-        for doc in resultados:
-            id_doc, num_control, alumno, nss, categoria, fecha, archivo = doc
-            # Guardamos la relación usando el nombre del alumno para el selector
-            opciones_docs[f"{alumno} ({num_control})"] = archivo
+# Vista de inicio de sesión si no está autenticado
+if not st.session_state["autenticado"]:
+    st.markdown("### 🔐 Acceso Restringido")
+    password_ingresado = st.text_input("Introduce la contraseña para acceder a los expedientes:", type="password")
+    
+    if st.button("Ingresar"):
+        if password_ingresado == PASSWORD_CORRECTO:
+            st.session_state["autenticado"] = True
+            st.success("🔑 Acceso concedido.")
+            st.rerun()  # Recarga la página para mostrar el sistema
+        else:
+            st.error("❌ Contraseña incorrecta. Inténtalo de nuevo.")
             
-            # Ficha con los 4 datos clave legibles
-            with st.container():
-                st.markdown(f"### 👨‍🎓 Alumno: {alumno}")
-                st.text(
-                    f"No. Control: {num_control}\n"
-                    f"NSS: {nss}\n"
-                    f"Archivo Físico: {archivo}\n"
-                    f"Fecha de Registro: {fecha}"
-                )
-                st.markdown("---")
-        
-        # Selector único
-        seleccion = st.radio(
-            "Seleccione el alumno para visualizar su NSS:",
-            options=list(opciones_docs.keys()),
-            key="selector_alumnos"
-        )
-        st.session_state['archivo_seleccionado'] = opciones_docs[seleccion]
-    else:
-        st.info("No se encontraron coincidencias con los datos ingresados.")
-        st.session_state['archivo_seleccionado'] = None
+else:
+    # --- INTERFAZ DEL SISTEMA (SOLO VISIBLE SI ESTÁ AUTENTICADO) ---
+    
+    # Botón para cerrar sesión en la barra lateral
+    if st.sidebar.button("🚪 Cerrar Sesión"):
+        st.session_state["autenticado"] = False
+        st.rerun()
 
-with col_visor:
-    st.subheader("📄 Visor de Expediente PDF")
-    if 'archivo_seleccionado' in st.session_state and st.session_state['archivo_seleccionado']:
-        archivo_a_cargar = st.session_state['archivo_seleccionado']
-        ruta_completa = os.path.join(CARPETA_ANEXOS, archivo_a_cargar)
-        mostrar_pdf_estable(ruta_completa)
-    else:
-        st.info("Seleccione un registro de la izquierda para previsualizar.")
+    st.sidebar.header("🔍 Filtros de Búsqueda")
+    busqueda_texto = st.sidebar.text_input("Buscar por Nombre, Archivo, NSS o No. Control:")
+
+    # Consulta SQL Dinámica
+    query = """
+        SELECT id, num_control, alumno_nombre, nss, categoria, fecha_registro, archivo_nombre 
+        FROM documentos 
+        WHERE 1=1
+    """
+    parametros = []
+
+    if busqueda_texto:
+        query += """ 
+            AND (alumno_nombre LIKE ? 
+            OR archivo_nombre LIKE ? 
+            OR nss LIKE ? 
+            OR num_control LIKE ?)
+        """
+        termino = f"%{busqueda_texto}%"
+        parametros.extend([termino, termino, termino, termino])
+
+    # Ejecutar consulta
+    conn = conectar_db()
+    cursor = conn.cursor()
+    cursor.execute(query, parametros)
+    resultados = cursor.fetchall()
+    conn.close()
+
+    # Diseño en dos columnas
+    col_lista, col_visor = st.columns([1, 1])
+
+    with col_lista:
+        st.subheader("📋 Expedientes Encontrados")
+        if resultados:
+            opciones_docs = {}
+            
+            for doc in resultados:
+                id_doc, num_control, alumno, nss, categoria, fecha, archivo = doc
+                opciones_docs[f"{alumno} ({num_control})"] = archivo
+                
+                with st.container():
+                    st.markdown(f"### 👨‍🎓 Alumno: {alumno}")
+                    st.text(
+                        f"No. Control: {num_control}\n"
+                        f"NSS: {nss}\n"
+                        f"Archivo Físico: {archivo}\n"
+                        f"Fecha de Registro: {fecha}"
+                    )
+                    st.markdown("---")
+            
+            # Selector único
+            seleccion = st.radio(
+                "Seleccione el alumno para visualizar su NSS:",
+                options=list(opciones_docs.keys()),
+                key="selector_alumnos"
+            )
+            st.session_state['archivo_seleccionado'] = opciones_docs[seleccion]
+        else:
+            st.info("No se encontraron coincidencias con los datos ingresados.")
+            st.session_state['archivo_seleccionado'] = None
+
+    with col_visor:
+        st.subheader("📄 Visor de Expediente PDF")
+        if 'archivo_seleccionado' in st.session_state and st.session_state['archivo_seleccionado']:
+            archivo_a_cargar = st.session_state['archivo_seleccionado']
+            ruta_completa = os.path.join(CARPETA_ANEXOS, archivo_a_cargar)
+            mostrar_pdf_estable(ruta_completa)
+        else:
+            st.info("Seleccione un registro de la izquierda para previsualizar.")
