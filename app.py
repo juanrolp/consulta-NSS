@@ -50,7 +50,7 @@ def inicializar_db_dinamica():
     conn.commit()
     conn.close()
 
-# Inicializar base de datos
+# Inicializar base de datos al arrancar
 inicializar_db_dinamica()
 
 # --- FUNCIONES DE VISUALIZACIÓN ---
@@ -77,14 +77,13 @@ def mostrar_pdf_estable(ruta_pdf):
 
 
 # --- CONTROL DE ACCESO (SISTEMA DE SEGURIDAD SEGURO) ---
-
 PASSWORD_CORRECTO = "MetepecII_2026"
 
-# Inicializar estado de autenticación
+# Inicializar estado de autenticación en la sesión
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 
-# Callback para procesar el login de forma nativa sin usar st.rerun
+# Función callback para validar la contraseña de forma nativa
 def verificar_password():
     if st.session_state["password_input"] == PASSWORD_CORRECTO:
         st.session_state["autenticado"] = True
@@ -92,12 +91,11 @@ def verificar_password():
         st.session_state["autenticado"] = False
         st.sidebar.error("❌ Contraseña incorrecta.")
 
-# Si no está autenticado, bloquea la pantalla completa
+# Si no está autenticado, bloquea la interfaz y muestra la pantalla de acceso
 if not st.session_state["autenticado"]:
     st.markdown("### 🔐 Acceso Restringido")
     st.info("Por favor, introduce las credenciales asignadas por la administración del plantel para consultar los números de seguridad social.")
     
-    # El parámetro on_change ejecuta la verificación de manera limpia en el backend de Streamlit
     st.text_input(
         "Introduce la contraseña del sistema:", 
         type="password", 
@@ -108,74 +106,79 @@ if not st.session_state["autenticado"]:
 else:
     # --- INTERFAZ DEL SISTEMA (SOLO VISIBLE SI ESTÁ AUTENTICADO) ---
     
-    # Opción sencilla para cerrar sesión reiniciando el estado completo
+    # Botón en la barra lateral para cerrar sesión limpiamente
     if st.sidebar.button("🚪 Cerrar Sesión"):
         st.session_state["autenticado"] = False
-        st.write('<meta http-equiv="refresh" content="0">', unsafe_allow_html=True) # Alternativa limpia para refrescar
+        st.write('<meta http-equiv="refresh" content="0">', unsafe_allow_html=True)
 
     st.sidebar.header("🔍 Filtros de Búsqueda")
     busqueda_texto = st.sidebar.text_input("Buscar por Nombre, Archivo, NSS o No. Control:")
 
-    # Consulta SQL Dinámica
-    query = """
-        SELECT id, num_control, alumno_nombre, nss, categoria, fecha_registro, archivo_nombre 
-        FROM documentos 
-        WHERE 1=1
-    """
-    parametros = []
-
+    # --- CONTROL DE CONSULTA VACÍA ---
+    # Solo procesamos la búsqueda si el cuadro tiene texto introducido
     if busqueda_texto:
-        query += """ 
-            AND (alumno_nombre LIKE ? 
+        # Consulta SQL Dinámica filtrando por las 4 columnas
+        query = """
+            SELECT id, num_control, alumno_nombre, nss, categoria, fecha_registro, archivo_nombre 
+            FROM documentos 
+            WHERE (alumno_nombre LIKE ? 
             OR archivo_nombre LIKE ? 
             OR nss LIKE ? 
             OR num_control LIKE ?)
         """
         termino = f"%{busqueda_texto}%"
-        parametros.extend([termino, termino, termino, termino])
+        parametros = [termino, termino, termino, termino]
 
-    conn = conectar_db()
-    cursor = conn.cursor()
-    cursor.execute(query, parametros)
-    resultados = cursor.fetchall()
-    conn.close()
+        # Ejecutar consulta en la base de datos local SQLite
+        conn = conectar_db()
+        cursor = conn.cursor()
+        cursor.execute(query, parametros)
+        resultados = cursor.fetchall()
+        conn.close()
 
-    col_lista, col_visor = st.columns([1, 1])
+        # Diseño modular en dos columnas (Lista a la izquierda, PDF a la derecha)
+        col_lista, col_visor = st.columns([1, 1])
 
-    with col_lista:
-        st.subheader("📋 Expedientes Encontrados")
-        if resultados:
-            opciones_docs = {}
-            
-            for doc in resultados:
-                id_doc, num_control, alumno, nss, categoria, fecha, archivo = doc
-                opciones_docs[f"{alumno} ({num_control})"] = archivo
+        with col_lista:
+            st.subheader("📋 Expedientes Encontrados")
+            if resultados:
+                opciones_docs = {}
                 
-                with st.container():
-                    st.markdown(f"### 👨‍🎓 Alumno: {alumno}")
-                    st.text(
-                        f"No. Control: {num_control}\n"
-                        f"NSS: {nss}\n"
-                        f"Archivo Físico: {archivo}\n"
-                        f"Fecha de Registro: {fecha}"
-                    )
-                    st.markdown("---")
-            
-            seleccion = st.radio(
-                "Seleccione el alumno para visualizar su NSS:",
-                options=list(opciones_docs.keys()),
-                key="selector_alumnos"
-            )
-            st.session_state['archivo_seleccionado'] = opciones_docs[seleccion]
-        else:
-            st.info("No se encontraron coincidencias con los datos ingresados.")
-            st.session_state['archivo_seleccionado'] = None
+                for doc in resultados:
+                    id_doc, num_control, alumno, nss, categoria, fecha, archivo = doc
+                    opciones_docs[f"{alumno} ({num_control})"] = archivo
+                    
+                    with st.container():
+                        st.markdown(f"### 👨‍🎓 Alumno: {alumno}")
+                        st.text(
+                            f"No. Control: {num_control}\n"
+                            f"NSS: {nss}\n"
+                            f"Archivo Físico: {archivo}\n"
+                            f"Fecha de Registro: {fecha}"
+                        )
+                        st.markdown("---")
+                
+                # Selector de radio interactivo para los registros coincidentes
+                seleccion = st.radio(
+                    "Seleccione el alumno para visualizar su NSS:",
+                    options=list(opciones_docs.keys()),
+                    key="selector_alumnos"
+                )
+                st.session_state['archivo_seleccionado'] = opciones_docs[seleccion]
+            else:
+                st.info("No se encontraron coincidencias con los datos ingresados.")
+                st.session_state['archivo_seleccionado'] = None
 
-    with col_visor:
-        st.subheader("📄 Visor de Expediente PDF")
-        if 'archivo_seleccionado' in st.session_state and st.session_state['archivo_seleccionado']:
-            archivo_a_cargar = st.session_state['archivo_seleccionado']
-            ruta_completa = os.path.join(CARPETA_ANEXOS, archivo_a_cargar)
-            mostrar_pdf_estable(ruta_completa)
-        else:
-            st.info("Seleccione un registro de la izquierda para previsualizar.")
+        with col_visor:
+            st.subheader("📄 Visor de Expediente PDF")
+            if 'archivo_seleccionado' in st.session_state and st.session_state['archivo_seleccionado']:
+                archivo_a_cargar = st.session_state['archivo_seleccionado']
+                ruta_completa = os.path.join(CARPETA_ANEXOS, archivo_a_cargar)
+                mostrar_pdf_estable(ruta_completa)
+            else:
+                st.info("Seleccione un registro de la izquierda para previsualizar.")
+                
+    else:
+        # Estado inicial del sistema inmediatamente después del login exitoso
+        st.info("🔍 Ingrese un criterio en el cuadro de búsqueda de la barra lateral (Nombre, NSS o No. de Control) para consultar la información del alumno.")
+        st.session_state['archivo_seleccionado'] = None
